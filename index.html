@@ -242,7 +242,10 @@
 </div>
 
 <script>
-const API = 'https://streamdata.vaplayer.ru/api.php';
+const API_BASE = 'https://streamdata.vaplayer.ru/api.php';
+// Browsers block setting User-Agent / Referer directly in fetch (forbidden headers).
+// We route through corsproxy.io which forwards our custom headers to the origin server.
+const PROXY = 'https://corsproxy.io/?url=';
 
 async function fetchStreams() {
   const id = document.getElementById('tmdb-input').value.trim();
@@ -258,8 +261,20 @@ async function fetchStreams() {
   resultEl.innerHTML = '';
   setStatus('<span class="spinner"></span> Fetching stream data…', true);
 
+  const targetUrl = `${API_BASE}?tmdb=${encodeURIComponent(id)}&type=movie`;
+  const proxied   = `${PROXY}${encodeURIComponent(targetUrl)}`;
+
   try {
-    const res = await fetch(`${API}?tmdb=${encodeURIComponent(id)}&type=movie`);
+    const res = await fetch(proxied, {
+      method: 'GET',
+      headers: {
+        // Passed through by corsproxy.io to the origin
+        'Referer':    'https://vaplayer.ru/',
+        'Origin':     'https://vaplayer.ru',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+        'Accept':     'application/json, */*',
+      }
+    });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const json = await res.json();
     if (json.status_code !== '200') throw new Error('API error — check the TMDB ID.');
@@ -267,7 +282,7 @@ async function fetchStreams() {
     render(json, resultEl);
   } catch (e) {
     setStatus('', false);
-    errEl.textContent = '⚠ ' + e.message;
+    errEl.textContent = '⚠ ' + e.message + '. Try a different TMDB ID or check your connection.';
     errEl.style.display = 'block';
   } finally {
     btn.disabled = false;
