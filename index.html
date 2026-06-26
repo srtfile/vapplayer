@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stream Extractor</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #22263a;
+      --border: rgba(255,255,255,0.08);
+      --border-hover: rgba(255,255,255,0.18);
+      --accent: #6c63ff;
+      --accent-light: rgba(108,99,255,0.15);
+      --accent-border: rgba(108,99,255,0.4);
+      --text: #e8eaf6;
+      --text-muted: #8b8fa8;
+      --text-dim: #555870;
+      --success: #4caf82;
+      --danger: #e05c5c;
+      --playlist-bg: rgba(108,99,255,0.1);
+      --playlist-border: rgba(108,99,255,0.5);
+      --radius: 10px;
+      --radius-sm: 6px;
+      --mono: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+
+    /* Background grid */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(108,99,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(108,99,255,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .page { position: relative; z-index: 1; max-width: 780px; margin: 0 auto; }
+
+    /* Header */
+    header { text-align: center; margin-bottom: 2.5rem; }
+    .logo {
+      display: inline-flex; align-items: center; gap: 10px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 50px; padding: 6px 18px 6px 10px;
+      font-size: 13px; color: var(--text-muted); margin-bottom: 1.5rem;
+    }
+    .logo-dot {
+      width: 24px; height: 24px; border-radius: 50%;
+      background: linear-gradient(135deg, #6c63ff, #a78bfa);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px;
+    }
+    h1 { font-size: clamp(1.6rem, 4vw, 2.4rem); font-weight: 700; letter-spacing: -0.03em; color: var(--text); margin-bottom: .5rem; }
+    h1 span { color: var(--accent); }
+    header p { font-size: 15px; color: var(--text-muted); }
+
+    /* Search */
+    .search-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .search-row { display: flex; gap: 10px; }
+    .input-wrap { flex: 1; position: relative; }
+    .input-wrap svg { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-dim); width: 18px; height: 18px; pointer-events: none; }
+    input[type="text"], input[type="number"] {
+      width: 100%; padding: 12px 14px 12px 42px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text);
+      font-size: 15px; font-family: inherit;
+      outline: none; transition: border-color .2s;
+    }
+    input:focus { border-color: var(--accent); }
+    input::placeholder { color: var(--text-dim); }
+    input::-webkit-inner-spin-button { display: none; }
+
+    button.primary {
+      padding: 12px 24px;
+      background: var(--accent); color: #fff;
+      border: none; border-radius: var(--radius);
+      font-size: 15px; font-weight: 600; font-family: inherit;
+      cursor: pointer; white-space: nowrap;
+      transition: opacity .2s, transform .1s;
+      display: flex; align-items: center; gap: 8px;
+    }
+    button.primary:hover { opacity: .9; }
+    button.primary:active { transform: scale(.98); }
+    button.primary:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+
+    /* Status */
+    #status { text-align: center; font-size: 13px; color: var(--text-muted); min-height: 24px; margin-bottom: .5rem; }
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: 6px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Error */
+    #error {
+      display: none; background: rgba(224,92,92,0.1); border: 1px solid rgba(224,92,92,0.3);
+      color: #e05c5c; border-radius: var(--radius); padding: .75rem 1rem;
+      font-size: 13px; text-align: center; margin-bottom: 1rem;
+    }
+
+    /* Result */
+    #result { display: none; }
+
+    /* Movie header */
+    .movie-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 14px; padding: 1.25rem; margin-bottom: 1rem;
+      display: flex; gap: 16px; align-items: flex-start;
+    }
+    .movie-card img {
+      width: 90px; height: 130px; object-fit: cover;
+      border-radius: 8px; flex-shrink: 0;
+      border: 1px solid var(--border);
+    }
+    .movie-info { flex: 1; min-width: 0; }
+    .movie-title { font-size: 19px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: .4rem; }
+    .meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: .6rem; }
+    .badge {
+      font-size: 11px; font-weight: 500; padding: 3px 9px;
+      border-radius: 4px; display: inline-block;
+    }
+    .badge-accent { background: var(--accent-light); color: #a78bfa; border: 1px solid var(--accent-border); }
+    .badge-gray { background: var(--surface2); color: var(--text-muted); border: 1px solid var(--border); }
+    .imdb-link {
+      font-size: 13px; color: var(--accent); text-decoration: none;
+      display: inline-flex; align-items: center; gap: 4px;
+    }
+    .imdb-link:hover { text-decoration: underline; }
+    .filename {
+      font-family: var(--mono); font-size: 11px; color: var(--text-dim);
+      word-break: break-all; margin-top: .5rem; line-height: 1.5;
+      background: var(--surface2); border-radius: 4px; padding: 4px 8px;
+    }
+
+    /* Section heading */
+    .section-head {
+      font-size: 11px; font-weight: 600; letter-spacing: .08em;
+      text-transform: uppercase; color: var(--text-dim);
+      margin: 1.25rem 0 .6rem;
+    }
+
+    /* URL list */
+    .url-list { display: flex; flex-direction: column; gap: 8px; }
+    .url-item {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: .65rem 1rem;
+      transition: border-color .15s;
+    }
+    .url-item:hover { border-color: var(--border-hover); }
+    .url-item.is-playlist {
+      background: var(--playlist-bg); border-color: var(--playlist-border);
+    }
+    .url-pill {
+      font-size: 11px; font-weight: 600; padding: 3px 9px;
+      border-radius: 4px; white-space: nowrap; flex-shrink: 0;
+    }
+    .pill-playlist { background: var(--accent); color: #fff; }
+    .pill-mirror { background: var(--surface2); color: var(--text-muted); border: 1px solid var(--border); }
+    .pill-vtt { background: rgba(76,175,130,0.15); color: #4caf82; border: 1px solid rgba(76,175,130,0.3); }
+    .url-text {
+      flex: 1; font-family: var(--mono); font-size: 11.5px; color: var(--text-muted);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .url-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .btn-sm {
+      font-size: 12px; padding: 5px 11px; border-radius: var(--radius-sm);
+      border: 1px solid var(--border); background: transparent;
+      color: var(--text-muted); cursor: pointer; font-family: inherit;
+      display: inline-flex; align-items: center; gap: 5px;
+      text-decoration: none; transition: background .15s, border-color .15s;
+    }
+    .btn-sm:hover { background: var(--surface2); border-color: var(--border-hover); color: var(--text); }
+    .btn-sm.copied { color: var(--success); border-color: rgba(76,175,130,.4); }
+
+    /* Footer */
+    footer { text-align: center; margin-top: 3rem; font-size: 12px; color: var(--text-dim); }
+
+    /* Responsive */
+    @media(max-width:540px){
+      .search-row { flex-direction: column; }
+      .movie-card { flex-direction: column; }
+      .movie-card img { width: 100%; height: 160px; }
+      .url-item { flex-wrap: wrap; }
+      .url-text { width: 100%; order: 3; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <div class="logo">
+      <span class="logo-dot">▶</span>
+      Stream Extractor
+    </div>
+    <h1>TMDB <span>Stream</span> Extractor</h1>
+    <p>Enter a TMDB movie ID to extract all available stream URLs</p>
+  </header>
+
+  <div class="search-card">
+    <div class="search-row">
+      <div class="input-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input type="number" id="tmdb-input" placeholder="Enter TMDB ID — e.g. 76341" min="1" autocomplete="off" />
+      </div>
+      <button class="primary" id="fetch-btn" onclick="fetchStreams()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polygon points="5 3 19 12 5 21 5 3"/>
+        </svg>
+        Extract
+      </button>
+    </div>
+  </div>
+
+  <div id="status"></div>
+  <div id="error"></div>
+  <div id="result"></div>
+
+  <footer>Powered by streamdata.vaplayer.ru &nbsp;·&nbsp; TMDB movie type</footer>
+
+</div>
+
+<script>
+const API = 'https://streamdata.vaplayer.ru/api.php';
+
+async function fetchStreams() {
+  const id = document.getElementById('tmdb-input').value.trim();
+  if (!id) { setStatus('Enter a TMDB ID first.', false); return; }
+
+  const btn = document.getElementById('fetch-btn');
+  const errEl = document.getElementById('error');
+  const resultEl = document.getElementById('result');
+
+  btn.disabled = true;
+  errEl.style.display = 'none';
+  resultEl.style.display = 'none';
+  resultEl.innerHTML = '';
+  setStatus('<span class="spinner"></span> Fetching stream data…', true);
+
+  try {
+    const res = await fetch(`${API}?tmdb=${encodeURIComponent(id)}&type=movie`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const json = await res.json();
+    if (json.status_code !== '200') throw new Error('API error — check the TMDB ID.');
+    setStatus('', false);
+    render(json, resultEl);
+  } catch (e) {
+    setStatus('', false);
+    errEl.textContent = '⚠ ' + e.message;
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function isPlaylist(url) {
+  return url.includes('/playlist/') || url.includes('list.m3u8');
+}
+
+function render(json, container) {
+  const d = json.data;
+  const raw = d.stream_urls || [];
+
+  // Playlist URLs first, mirrors after
+  const playlists = raw.filter(isPlaylist);
+  const mirrors = raw.filter(u => !isPlaylist(u));
+  const sorted = [...playlists, ...mirrors];
+
+  let html = '';
+
+  // Movie header card
+  html += `<div class="movie-card">`;
+  if (d.backdrop) {
+    html += `<img src="${esc(d.backdrop)}" alt="Backdrop" loading="lazy" onerror="this.style.display='none'">`;
+  }
+  html += `<div class="movie-info">
+    <div class="movie-title">${esc(d.title || 'Unknown title')}</div>
+    <div class="meta-row">
+      <span class="badge badge-accent">${sorted.length} stream URL${sorted.length !== 1 ? 's' : ''}</span>`;
+  if (d.imdb_id) {
+    html += `<a class="imdb-link" href="https://www.imdb.com/title/${esc(d.imdb_id)}/" target="_blank" rel="noopener">
+      IMDb ↗
+    </a>`;
+  }
+  html += `</div>`;
+  if (d.file_name) {
+    html += `<div class="filename">${esc(d.file_name)}</div>`;
+  }
+  html += `</div></div>`;
+
+  // Stream URLs
+  html += `<div class="section-head">Stream URLs</div><div class="url-list">`;
+  let mirrorCount = 0;
+  sorted.forEach(url => {
+    const pl = isPlaylist(url);
+    if (!pl) mirrorCount++;
+    const pillClass = pl ? 'pill-playlist' : 'pill-mirror';
+    const pillLabel = pl ? '⬤ Playlist' : `Mirror ${mirrorCount}`;
+    html += `<div class="url-item${pl ? ' is-playlist' : ''}">
+      <span class="url-pill ${pillClass}">${pillLabel}</span>
+      <span class="url-text" title="${esc(url)}">${esc(url)}</span>
+      <div class="url-actions">
+        <button class="btn-sm" onclick="copyUrl('${esc(url)}', this)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          Copy
+        </button>
+        <a class="btn-sm" href="${esc(url)}" target="_blank" rel="noopener">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          Open
+        </a>
+      </div>
+    </div>`;
+  });
+  html += `</div>`;
+
+  // Thumbnails VTT
+  if (json.thumbnails_url) {
+    html += `<div class="section-head">Thumbnails</div><div class="url-list">
+      <div class="url-item">
+        <span class="url-pill pill-vtt">VTT</span>
+        <span class="url-text" title="${esc(json.thumbnails_url)}">${esc(json.thumbnails_url)}</span>
+        <div class="url-actions">
+          <button class="btn-sm" onclick="copyUrl('${esc(json.thumbnails_url)}', this)">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Copy
+          </button>
+          <a class="btn-sm" href="${esc(json.thumbnails_url)}" target="_blank" rel="noopener">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            Open
+          </a>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  container.innerHTML = html;
+  container.style.display = 'block';
+}
+
+function setStatus(msg, isHtml) {
+  const el = document.getElementById('status');
+  if (isHtml) el.innerHTML = msg;
+  else el.textContent = msg;
+}
+
+async function copyUrl(url, btn) {
+  try {
+    await navigator.clipboard.writeText(url);
+    const orig = btn.innerHTML;
+    btn.classList.add('copied');
+    btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> Copied`;
+    setTimeout(() => { btn.classList.remove('copied'); btn.innerHTML = orig; }, 2000);
+  } catch {
+    btn.textContent = 'Failed';
+  }
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+document.getElementById('tmdb-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') fetchStreams();
+});
+</script>
+</body>
+</html>
